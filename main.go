@@ -7,10 +7,9 @@ import (
 	"math"
 	"net/http"
 	//"strconv"
-	"time"
-	"strings"
 	"io/ioutil"
-
+	"strings"
+	"time"
 )
 
 var (
@@ -63,10 +62,10 @@ type TimeEntry struct {
 }
 
 type NewTimeEntry struct {
-	IssueId   int    `json:"issue_id"`
-	SpentOn   string `json:"spent_on"`
-	Hours     float64 `json:"hours"`
-	ActivityId int `json:"activity_id"`
+	IssueId    int     `json:"issue_id"`
+	SpentOn    string  `json:"spent_on"`
+	Hours      float64 `json:"hours"`
+	ActivityId int     `json:"activity_id"`
 }
 
 type timeEntriesResult struct {
@@ -144,7 +143,7 @@ func makeTimeEntry(host string, apiKey string, issueId int, today string, timeTo
 	var ir timeEntryRequest
 	ir.TimeEntry = NewTimeEntry{IssueId: issueId,
 		SpentOn: today,
-		Hours: timeToAdd, ActivityId: 9}
+		Hours:   timeToAdd, ActivityId: 9}
 	s, err := json.Marshal(ir)
 	if err != nil {
 		log.Fatal(err)
@@ -197,9 +196,7 @@ func main() {
 		var extraTime float64 = float64(workHours) - (roundedTimePerIssue * float64(issuesCount))
 
 		log.Printf("Missing hours: %v Issues: %v Time per issue: %v(rounded: %v) Extra time: %v\n", missingHours, issuesCount, timePerIssue, roundedTimePerIssue, extraTime)
-		log.Printf("To track: %v", extraTime+(roundedTimePerIssue * float64(issuesCount)))
-
-
+		log.Printf("To track: %v", extraTime+(roundedTimePerIssue*float64(issuesCount)))
 
 		for num, issue := range issues.Issues {
 
