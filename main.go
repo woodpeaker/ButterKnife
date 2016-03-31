@@ -13,6 +13,7 @@ import (
 var (
 	apiKey string
 	host   string
+	dryRun bool
 )
 
 type id struct {
@@ -81,8 +82,9 @@ type customField struct {
 }
 
 func init() {
-	flag.StringVar(&apiKey, "apikey", "", "Redmine API Key")
-	flag.StringVar(&host, "host", "", "Redmine host")
+	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
+	flag.StringVar(&host, "host", "", "Redmine `HOST`")
+	flag.BoolVar(&dryRun, "dry", false, "Dry run")
 }
 
 func myIssues(host string, apiKey string) (issues issuesResult) {
@@ -204,7 +206,9 @@ func main() {
 				timeToAdd += extraTime
 			}
 			log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
-			//makeTimeEntry(host, apiKey, issue.ID, today, timeToAdd)
+			if !dryRun {
+				go makeTimeEntry(host, apiKey, issue.ID, today, timeToAdd)
+			}
 		}
 	}
 }
