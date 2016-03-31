@@ -91,20 +91,20 @@ func init() {
 }
 
 func apiGet(url string, container interface{}) (err error) {
-	if response, err := http.Get(url); err == nil {
-		defer response.Body.Close()
-
-		if response.StatusCode != 200 {
-			//err = errors.New(fmt.Sprintf("Response code %d", response.StatusCode))
-			err = fmt.Errorf("Response code %d", response.StatusCode)
-			return err
-		}
-
-		decoder := json.NewDecoder(response.Body)
-		err = decoder.Decode(&container)
-	} else {
+	response, err := http.Get(url)
+	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
+
+	if response.StatusCode != 200 {
+		//err = errors.New(fmt.Sprintf("Response code %d", response.StatusCode))
+		err = fmt.Errorf("Response code %d", response.StatusCode)
+		return err
+	}
+
+	decoder := json.NewDecoder(response.Body)
+	err = decoder.Decode(&container)
 	return
 }
 
