@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -11,9 +12,10 @@ import (
 )
 
 var (
-	apiKey string
-	host   string
-	dryRun bool
+	apiKey    string
+	host      string
+	dryRun    bool
+	workHours float64
 )
 
 type id struct {
@@ -85,49 +87,36 @@ func init() {
 	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
+	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
 }
 
-func myIssues(host string, apiKey string) (issues issuesResult) {
-	url := "https://" + host + "/issues.json?assigned_to_id=me&limit=100&key=" + apiKey
-	res, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
+func apiGet(url string, container interface{}) (err error) {
+	if response, err := http.Get(url); err == nil {
+		defer response.Body.Close()
 
-	if res.StatusCode != 200 {
-		log.Println(res.StatusCode)
-		log.Fatal(res)
-	}
+		if response.StatusCode != 200 {
+			//err = errors.New(fmt.Sprintf("Response code %d", response.StatusCode))
+			err = fmt.Errorf("Response code %d", response.StatusCode)
+			return err
+		}
 
-	decoder := json.NewDecoder(res.Body)
-	err = decoder.Decode(&issues)
-	if err != nil {
-		log.Println("decoding error")
-		log.Fatal(err)
+		decoder := json.NewDecoder(response.Body)
+		err = decoder.Decode(&container)
+	} else {
+		return err
 	}
 	return
 }
 
-func myTimeEntries(host string, apiKey string) (entries timeEntriesResult) {
+func myIssues(host string, apiKey string) (issues issuesResult, err error) {
+	url := "https://" + host + "/issues.json?assigned_to_id=me&limit=100&key=" + apiKey
+	err = apiGet(url, &issues)
+	return
+}
+
+func myTimeEntries(host string, apiKey string) (entries timeEntriesResult, err error) {
 	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=100&key=" + apiKey
-	res, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != 200 {
-		log.Println(res.StatusCode)
-		log.Fatal(res)
-	}
-
-	decoder := json.NewDecoder(res.Body)
-	err = decoder.Decode(&entries)
-	if err != nil {
-		log.Println("decoding error")
-		log.Fatal(err)
-	}
+	err = apiGet(url, &entries)
 	return
 }
 
@@ -165,50 +154,59 @@ func makeTimeEntry(host string, apiKey string, issueID int, today string, timeTo
 	//log.Printf("Body: %s", body)
 }
 
+func trackTime(issues []issue, spentOn string, workHours float64, trackedTime float64) {
+	var issuesCount = len(issues)
+	var missingHours = workHours - trackedTime
+	var timePerIssue = missingHours / float64(issuesCount)
+	var roundedTimePerIssue = math.Floor(timePerIssue*10) / 10
+	var extraTime = missingHours - (roundedTimePerIssue * float64(issuesCount))
+
+	// min = 0.25
+	// x = (missinHours / min)
+	// rest = x % issuesCount
+	// timePerIssue = x / issuesCount * min
+
+	log.Printf("Missing hours: %v Issues: %v Time per issue: %v(rounded: %v) Extra time: %v To track: %v\n",
+		missingHours,
+		issuesCount,
+		timePerIssue,
+		roundedTimePerIssue,
+		extraTime,
+		extraTime+(roundedTimePerIssue*float64(issuesCount)))
+
+	for num, issue := range issues {
+		timeToAdd := roundedTimePerIssue
+		// Add extraTime to the first ticket
+		if num == 0 {
+			timeToAdd += extraTime
+		}
+		log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
+		if !dryRun {
+			go makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
+		}
+	}
+}
+
 func main() {
 	var trackedTime = 0.0
-	var workHours = 8.0
 
 	flag.Parse()
 	today := time.Now().Format("2006-01-02")
 	log.Printf("Today is: %v\n", today)
 
-	entries := myTimeEntries(host, apiKey)
-	for _, timeEntry := range entries.TimeEntries {
-		if timeEntry.SpentOn == today {
-			trackedTime += timeEntry.Hours
+	if entries, err := myTimeEntries(host, apiKey); err == nil {
+		for _, timeEntry := range entries.TimeEntries {
+			if timeEntry.SpentOn == today {
+				trackedTime += timeEntry.Hours
+			}
 		}
 	}
+
 	log.Printf("Tracked today: %v\n", trackedTime)
 
 	if trackedTime < workHours {
-		issues := myIssues(host, apiKey)
-
-		var issuesCount = len(issues.Issues)
-		var missingHours = workHours - trackedTime
-		var timePerIssue = missingHours / float64(issuesCount)
-		var roundedTimePerIssue = math.Floor(timePerIssue*10) / 10
-		var extraTime = missingHours - (roundedTimePerIssue * float64(issuesCount))
-
-		// min = 0.25
-		// x = (missinHours / min)
-		// rest = x % issuesCount
-		// timePerIssue = x / issuesCount * min
-
-		log.Printf("Missing hours: %v Issues: %v Time per issue: %v(rounded: %v) Extra time: %v\n",
-			missingHours, issuesCount, timePerIssue, roundedTimePerIssue, extraTime)
-		log.Printf("To track: %v", extraTime+(roundedTimePerIssue*float64(issuesCount)))
-
-		for num, issue := range issues.Issues {
-			timeToAdd := roundedTimePerIssue
-			// Add extraTime to the first ticket
-			if num == 0 {
-				timeToAdd += extraTime
-			}
-			log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
-			if !dryRun {
-				go makeTimeEntry(host, apiKey, issue.ID, today, timeToAdd)
-			}
+		if issues, err := myIssues(host, apiKey); err == nil {
+			trackTime(issues.Issues, today, workHours, trackedTime)
 		}
 	}
 }
