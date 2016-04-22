@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	activityId = 9
+	activityID = 9
 )
 
 var (
@@ -137,7 +137,7 @@ func makeTimeEntry(host string, apiKey string, issueID int, today string, timeTo
 		IssueID:    issueID,
 		SpentOn:    today,
 		Hours:      timeToAdd,
-		ActivityID: activityId,
+		ActivityID: activityID,
 	}
 	data, err := json.Marshal(ir)
 	if err != nil {
