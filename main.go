@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -11,9 +12,9 @@ import (
 	"time"
 )
 
-const {
-    activityId := 9
-}
+const (
+	activityId = 9
+)
 
 var (
 	apiKey    string
@@ -21,6 +22,7 @@ var (
 	dryRun    bool
 	workHours float64
 	today     string
+	debug     bool
 )
 
 type id struct {
@@ -92,6 +94,7 @@ func init() {
 	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
+	flag.BoolVar(&debug, "debug", false, "Debug")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
 	flag.StringVar(&today, "today", "", "Date to use as 'today'. Format is YYYY-MM-DD")
 }
@@ -149,15 +152,18 @@ func makeTimeEntry(host string, apiKey string, issueID int, today string, timeTo
 	req.Header.Set("X-Redmine-API-Key", apiKey)
 
 	client := &http.Client{}
-	res, err := client.Do(req)
-	defer res.Body.Close()
+	response, err := client.Do(req)
+	defer response.Body.Close()
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	//log.Println(res)
-	//body, err := ioutil.ReadAll(res.Body)
-	//log.Printf("Body: %s", body)
+
+	if debug {
+		log.Println(response)
+		body, _ := ioutil.ReadAll(response.Body)
+		log.Printf("Body: %s", body)
+	}
 }
 
 func trackTime(issues []issue, spentOn string, workHours float64, trackedTime float64) {
@@ -188,7 +194,7 @@ func trackTime(issues []issue, spentOn string, workHours float64, trackedTime fl
 		}
 		log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
 		if !dryRun {
-			go makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
+			makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
 		}
 	}
 }
