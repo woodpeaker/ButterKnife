@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	apiKey    string
-	host      string
-	dryRun    bool
-	workHours float64
+	apiKey           string
+	host             string
+	dryRun           bool
+	workHours        float64
+	timeEntriesLimit int
 )
 
 type id struct {
@@ -86,8 +87,10 @@ type customField struct {
 func init() {
 	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
+	flag.StringVar(&today, "date", "", "Date to check")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
+	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
 }
 
 func apiGet(url string, container interface{}) (err error) {
@@ -115,7 +118,7 @@ func myIssues(host string, apiKey string) (issues issuesResult, err error) {
 }
 
 func myTimeEntries(host string, apiKey string) (entries timeEntriesResult, err error) {
-	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=100&key=" + apiKey
+	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=" + strconv.Itoa(timeEntriesLimit) + "&key=" + apiKey
 	err = apiGet(url, &entries)
 	return
 }
@@ -200,6 +203,10 @@ func main() {
 				trackedTime += timeEntry.Hours
 			}
 		}
+	}
+
+	if len(entries) >= timeEntriesLimit {
+		log.Fatalf("Too many time entries. Bye!")
 	}
 
 	log.Printf("Tracked today: %v\n", trackedTime)
