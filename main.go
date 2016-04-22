@@ -7,8 +7,8 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -198,15 +198,16 @@ func main() {
 	log.Printf("Today is: %v\n", today)
 
 	if entries, err := myTimeEntries(host, apiKey); err == nil {
+		todayEntries := 0
 		for _, timeEntry := range entries.TimeEntries {
 			if timeEntry.SpentOn == today {
+				todayEntries++
 				trackedTime += timeEntry.Hours
 			}
 		}
-	}
-
-	if len(entries) >= timeEntriesLimit {
-		log.Fatalf("Too many time entries. Bye!")
+		if todayEntries >= timeEntriesLimit {
+			log.Fatalf("Too many time entries. Bye!")
+		}
 	}
 
 	log.Printf("Tracked today: %v\n", trackedTime)
