@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"strconv"
 	"time"
 )
 
@@ -87,7 +88,6 @@ type customField struct {
 func init() {
 	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
-	flag.StringVar(&today, "date", "", "Date to check")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
 	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
