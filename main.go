@@ -7,15 +7,17 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var (
-	apiKey    string
-	host      string
-	dryRun    bool
-	workHours float64
+	apiKey           string
+	host             string
+	dryRun           bool
+	workHours        float64
+	timeEntriesLimit int
 )
 
 type id struct {
@@ -88,6 +90,7 @@ func init() {
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
+	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
 }
 
 func apiGet(url string, container interface{}) (err error) {
@@ -115,7 +118,7 @@ func myIssues(host string, apiKey string) (issues issuesResult, err error) {
 }
 
 func myTimeEntries(host string, apiKey string) (entries timeEntriesResult, err error) {
-	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=100&key=" + apiKey
+	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=" + strconv.Itoa(timeEntriesLimit) + "&key=" + apiKey
 	err = apiGet(url, &entries)
 	return
 }
@@ -195,10 +198,15 @@ func main() {
 	log.Printf("Today is: %v\n", today)
 
 	if entries, err := myTimeEntries(host, apiKey); err == nil {
+		todayEntries := 0
 		for _, timeEntry := range entries.TimeEntries {
 			if timeEntry.SpentOn == today {
+				todayEntries++
 				trackedTime += timeEntry.Hours
 			}
+		}
+		if todayEntries >= timeEntriesLimit {
+			log.Fatalf("Too many time entries. Bye!")
 		}
 	}
 
