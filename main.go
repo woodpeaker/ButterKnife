@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -12,11 +13,17 @@ import (
 	"time"
 )
 
+const (
+	activityID = 9
+)
+
 var (
 	apiKey           string
 	host             string
 	dryRun           bool
 	workHours        float64
+	today            string
+	debug            bool
 	timeEntriesLimit int
 )
 
@@ -89,7 +96,9 @@ func init() {
 	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
+	flag.BoolVar(&debug, "debug", false, "Debug")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
+	flag.StringVar(&today, "today", "", "Date to use as 'today'. Format is YYYY-MM-DD")
 	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
 }
 
@@ -101,7 +110,6 @@ func apiGet(url string, container interface{}) (err error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		//err = errors.New(fmt.Sprintf("Response code %d", response.StatusCode))
 		err = fmt.Errorf("Response code %d", response.StatusCode)
 		return err
 	}
@@ -131,7 +139,7 @@ func makeTimeEntry(host string, apiKey string, issueID int, today string, timeTo
 		IssueID:    issueID,
 		SpentOn:    today,
 		Hours:      timeToAdd,
-		ActivityID: 9,
+		ActivityID: activityID,
 	}
 	data, err := json.Marshal(ir)
 	if err != nil {
@@ -146,15 +154,18 @@ func makeTimeEntry(host string, apiKey string, issueID int, today string, timeTo
 	req.Header.Set("X-Redmine-API-Key", apiKey)
 
 	client := &http.Client{}
-	res, err := client.Do(req)
-	defer res.Body.Close()
+	response, err := client.Do(req)
+	defer response.Body.Close()
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	//log.Println(res)
-	//body, err := ioutil.ReadAll(res.Body)
-	//log.Printf("Body: %s", body)
+
+	if debug {
+		log.Println(response)
+		body, _ := ioutil.ReadAll(response.Body)
+		log.Printf("Body: %s", body)
+	}
 }
 
 func trackTime(issues []issue, spentOn string, workHours float64, trackedTime float64) {
@@ -185,17 +196,28 @@ func trackTime(issues []issue, spentOn string, workHours float64, trackedTime fl
 		}
 		log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
 		if !dryRun {
-			go makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
+			makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
 		}
 	}
 }
 
 func main() {
+	var todayDate string
 	var trackedTime = 0.0
 
 	flag.Parse()
-	today := time.Now().Format("2006-01-02")
-	log.Printf("Today is: %v\n", today)
+
+	if today == "" {
+		todayDate = time.Now().Format("2006-01-02")
+	} else {
+		if todayDateButReallyDate, err := time.Parse("2006-01-02", today); err != nil {
+			log.Fatalf("Invalid date format.")
+		} else {
+			todayDate = todayDateButReallyDate.Format("2006-01-02")
+		}
+	}
+
+	log.Printf("today is: %v\n", todayDate)
 
 	if entries, err := myTimeEntries(host, apiKey); err == nil {
 		todayEntries := 0
@@ -214,7 +236,7 @@ func main() {
 
 	if trackedTime < workHours {
 		if issues, err := myIssues(host, apiKey); err == nil {
-			trackTime(issues.Issues, today, workHours, trackedTime)
+			trackTime(issues.Issues, todayDate, workHours, trackedTime)
 		}
 	}
 }
