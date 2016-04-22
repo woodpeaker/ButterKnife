@@ -16,6 +16,7 @@ var (
 	host      string
 	dryRun    bool
 	workHours float64
+	today     string
 )
 
 type id struct {
@@ -88,6 +89,7 @@ func init() {
 	flag.StringVar(&host, "host", "", "Redmine `HOST`")
 	flag.BoolVar(&dryRun, "dry", false, "Dry run")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
+	flag.StringVar(&today, "today", "", "Date to use as 'today'. Format is YYYY-MM-DD")
 }
 
 func apiGet(url string, container interface{}) (err error) {
@@ -188,25 +190,36 @@ func trackTime(issues []issue, spentOn string, workHours float64, trackedTime fl
 }
 
 func main() {
+	var todayDate string
 	var trackedTime = 0.0
 
 	flag.Parse()
-	today := time.Now().Format("2006-01-02")
-	log.Printf("Today is: %v\n", today)
+
+	if today == "" {
+		todayDate = time.Now().Format("2006-01-02")
+	} else {
+		if todayDateButReallyDate, err := time.Parse("2006-01-02", today); err != nil {
+			log.Fatalf("Invalid date format.")
+		} else {
+			todayDate = todayDateButReallyDate.Format("2006-01-02")
+		}
+	}
+
+	log.Printf("todayDate is: %v\n", todayDate)
 
 	if entries, err := myTimeEntries(host, apiKey); err == nil {
 		for _, timeEntry := range entries.TimeEntries {
-			if timeEntry.SpentOn == today {
+			if timeEntry.SpentOn == todayDate {
 				trackedTime += timeEntry.Hours
 			}
 		}
 	}
 
-	log.Printf("Tracked today: %v\n", trackedTime)
+	log.Printf("Tracked todayDate: %v\n", trackedTime)
 
 	if trackedTime < workHours {
 		if issues, err := myIssues(host, apiKey); err == nil {
-			trackTime(issues.Issues, today, workHours, trackedTime)
+			trackTime(issues.Issues, todayDate, workHours, trackedTime)
 		}
 	}
 }
