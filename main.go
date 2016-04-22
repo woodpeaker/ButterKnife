@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,12 +18,13 @@ const (
 )
 
 var (
-	apiKey    string
-	host      string
-	dryRun    bool
-	workHours float64
-	today     string
-	debug     bool
+	apiKey           string
+	host             string
+	dryRun           bool
+	workHours        float64
+	today            string
+	debug            bool
+	timeEntriesLimit int
 )
 
 type id struct {
@@ -97,6 +99,7 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "Debug")
 	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
 	flag.StringVar(&today, "today", "", "Date to use as 'today'. Format is YYYY-MM-DD")
+	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
 }
 
 func apiGet(url string, container interface{}) (err error) {
@@ -107,7 +110,6 @@ func apiGet(url string, container interface{}) (err error) {
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		//err = errors.New(fmt.Sprintf("Response code %d", response.StatusCode))
 		err = fmt.Errorf("Response code %d", response.StatusCode)
 		return err
 	}
@@ -124,7 +126,7 @@ func myIssues(host string, apiKey string) (issues issuesResult, err error) {
 }
 
 func myTimeEntries(host string, apiKey string) (entries timeEntriesResult, err error) {
-	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=100&key=" + apiKey
+	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=" + strconv.Itoa(timeEntriesLimit) + "&key=" + apiKey
 	err = apiGet(url, &entries)
 	return
 }
@@ -215,17 +217,22 @@ func main() {
 		}
 	}
 
-	log.Printf("todayDate is: %v\n", todayDate)
+	log.Printf("today is: %v\n", todayDate)
 
 	if entries, err := myTimeEntries(host, apiKey); err == nil {
+		todayEntries := 0
 		for _, timeEntry := range entries.TimeEntries {
-			if timeEntry.SpentOn == todayDate {
+			if timeEntry.SpentOn == today {
+				todayEntries++
 				trackedTime += timeEntry.Hours
 			}
 		}
+		if todayEntries >= timeEntriesLimit {
+			log.Fatalf("Too many time entries. Bye!")
+		}
 	}
 
-	log.Printf("Tracked todayDate: %v\n", trackedTime)
+	log.Printf("Tracked today: %v\n", trackedTime)
 
 	if trackedTime < workHours {
 		if issues, err := myIssues(host, apiKey); err == nil {
