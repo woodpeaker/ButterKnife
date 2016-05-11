@@ -3,153 +3,150 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
-	//"strconv"
-	"io/ioutil"
+	"strconv"
 	"strings"
 	"time"
 )
 
-var (
-	apiKey string
-	host   string
+const (
+	activityID = 9
 )
 
-type Id struct {
-	Id int `json:"id"`
+var (
+	apiKey           string
+	host             string
+	dryRun           bool
+	workHours        float64
+	today            string
+	debug            bool
+	timeEntriesLimit int
+)
+
+type id struct {
+	ID int `json:"id"`
 }
 
-type IdName struct {
-	Id   int    `json:"id"`
+type idName struct {
+	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
 type issuesResult struct {
-	Issues []Issue `json:"issues"`
+	Issues []issue `json:"issues"`
 }
 
-type Issue struct {
-	Id           int            `json:"id"`
+type issue struct {
+	ID           int            `json:"id"`
 	Subject      string         `json:"subject"`
 	Description  string         `json:"description"`
-	ProjectId    int            `json:"project_id"`
-	Project      *IdName        `json:"project"`
-	Tracker      *IdName        `json:"tracker"`
-	StatusId     int            `json:"status_id"`
-	Status       *IdName        `json:"status"`
-	Priority     *IdName        `json:"priority"`
-	Author       *IdName        `json:"author"`
-	AssignedTo   *IdName        `json:"assigned_to"`
+	ProjectID    int            `json:"project_id"`
+	Project      *idName        `json:"project"`
+	Tracker      *idName        `json:"tracker"`
+	StatusID     int            `json:"status_id"`
+	Status       *idName        `json:"status"`
+	Priority     *idName        `json:"priority"`
+	Author       *idName        `json:"author"`
+	AssignedTo   *idName        `json:"assigned_to"`
 	Notes        string         `json:"notes"`
 	StatusDate   string         `json:"status_date"`
 	CreatedOn    string         `json:"created_on"`
 	UpdatedOn    string         `json:"updated_on"`
-	CustomFields []*CustomField `json:"custom_fields"`
+	CustomFields []*customField `json:"custom_fields"`
 }
 
-type TimeEntry struct {
-	Id        int    `json:"id"`
-	Project   IdName `json:"project"`
-	Issue     Id     `json:"issue"`
-	User      IdName `json:"user"`
-	Activity  IdName `json:"activity"`
-	Hours     float32
+type timeEntry struct {
+	ID        int    `json:"id"`
+	Project   idName `json:"project"`
+	Issue     id     `json:"issue"`
+	User      idName `json:"user"`
+	Activity  idName `json:"activity"`
+	Hours     float64
 	SpentOn   string `json:"spent_on"`
 	CreatedOn string `json:"created_on"`
 	UpdatedOn string `json:"updated_on"`
 }
 
-type NewTimeEntry struct {
-	IssueId    int     `json:"issue_id"`
+type newTimeEntry struct {
+	IssueID    int     `json:"issue_id"`
 	SpentOn    string  `json:"spent_on"`
 	Hours      float64 `json:"hours"`
-	ActivityId int     `json:"activity_id"`
+	ActivityID int     `json:"activity_id"`
 }
 
 type timeEntriesResult struct {
-	TimeEntries []TimeEntry `json:"time_entries"`
+	TimeEntries []timeEntry `json:"time_entries"`
 }
 
 type timeEntryRequest struct {
-	TimeEntry NewTimeEntry `json:"time_entry"`
+	TimeEntry newTimeEntry `json:"time_entry"`
 }
 
-type CustomField struct {
-	Id    int    `json:"id"`
+type customField struct {
+	ID    int    `json:"id"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
 
 func init() {
-	flag.StringVar(&apiKey, "apikey", "", "Redmine API Key")
-	flag.StringVar(&host, "host", "", "Redmine host")
+	flag.StringVar(&apiKey, "apikey", "", "Redmine `APIKey`")
+	flag.StringVar(&host, "host", "", "Redmine `HOST`")
+	flag.BoolVar(&dryRun, "dry", false, "Dry run")
+	flag.BoolVar(&debug, "debug", false, "Debug")
+	flag.Float64Var(&workHours, "hours", 8.0, "Work `hours`")
+	flag.StringVar(&today, "today", "", "Date to use as 'today'. Format is YYYY-MM-DD")
+	flag.IntVar(&timeEntriesLimit, "limit", 100, "Time entries `limit`")
 }
 
-func myIssues(host string, apiKey string) issuesResult {
-	path := "/issues.json?assigned_to_id=me&limit=100&key=" + apiKey
-	url := "https://" + host + path
-	res, err := http.Get(url)
+func apiGet(url string, container interface{}) (err error) {
+	response, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 
-	decoder := json.NewDecoder(res.Body)
-	var r issuesResult
-	if res.StatusCode != 200 {
-		log.Println(res.StatusCode)
-		log.Fatal(res)
+	if response.StatusCode != 200 {
+		err = fmt.Errorf("Response code %d", response.StatusCode)
+		return err
 	}
-	err = decoder.Decode(&r)
-	if err != nil {
-		log.Println("decoding error")
-		log.Fatal(err)
-	}
-	//log.Println(len(r.Issues))
-	return r
+
+	decoder := json.NewDecoder(response.Body)
+	err = decoder.Decode(&container)
+	return
 }
 
-func myTimeEntries(host string, apiKey string) timeEntriesResult {
-	path := "/time_entries.json?user_id=me&sort=spent_on:desc&limit=100&key=" + apiKey
-	url := "https://" + host + path
-	res, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer res.Body.Close()
-
-	decoder := json.NewDecoder(res.Body)
-	var r timeEntriesResult
-	if res.StatusCode != 200 {
-		log.Println(res.StatusCode)
-		log.Fatal(res)
-	}
-	err = decoder.Decode(&r)
-	if err != nil {
-		log.Println("decoding error")
-		log.Fatal(err)
-	}
-	//log.Println(len(r.TimeEntries))
-	return r
+func myIssues(host string, apiKey string) (issues issuesResult, err error) {
+	url := "https://" + host + "/issues.json?assigned_to_id=me&limit=100&key=" + apiKey
+	err = apiGet(url, &issues)
+	return
 }
 
-func makeTimeEntry(host string, apiKey string, issueId int, today string, timeToAdd float64, projectId int) {
-	path := "/time_entries.json?key=" + apiKey
-	//path := "/projects/" + strconv.Itoa(projectId) + "/time_entries/new?key=" + apiKey
-	url := "https://" + host + path
+func myTimeEntries(host string, apiKey string) (entries timeEntriesResult, err error) {
+	url := "https://" + host + "/time_entries.json?user_id=me&sort=spent_on:desc&limit=" + strconv.Itoa(timeEntriesLimit) + "&key=" + apiKey
+	err = apiGet(url, &entries)
+	return
+}
+
+func makeTimeEntry(host string, apiKey string, issueID int, today string, timeToAdd float64) {
+	url := "https://" + host + "/time_entries.json?key=" + apiKey
 
 	var ir timeEntryRequest
-	ir.TimeEntry = NewTimeEntry{IssueId: issueId,
-		SpentOn: today,
-		Hours:   timeToAdd, ActivityId: 9}
-	s, err := json.Marshal(ir)
+	ir.TimeEntry = newTimeEntry{
+		IssueID:    issueID,
+		SpentOn:    today,
+		Hours:      timeToAdd,
+		ActivityID: activityID,
+	}
+	data, err := json.Marshal(ir)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(s)))
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(data)))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -157,58 +154,89 @@ func makeTimeEntry(host string, apiKey string, issueId int, today string, timeTo
 	req.Header.Set("X-Redmine-API-Key", apiKey)
 
 	client := &http.Client{}
-	res, err := client.Do(req)
+	response, err := client.Do(req)
+	defer response.Body.Close()
+
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(res)
-	body, err := ioutil.ReadAll(res.Body)
-	log.Printf("Body: %s", body)
 
-	defer res.Body.Close()
+	if debug {
+		log.Println(response)
+		body, _ := ioutil.ReadAll(response.Body)
+		log.Printf("Body: %s", body)
+	}
+}
+
+func trackTime(issues []issue, spentOn string, workHours float64, trackedTime float64) {
+	var issuesCount = len(issues)
+	var missingHours = workHours - trackedTime
+	var timePerIssue = missingHours / float64(issuesCount)
+	var roundedTimePerIssue = math.Floor(timePerIssue*10) / 10
+	var extraTime = missingHours - (roundedTimePerIssue * float64(issuesCount))
+
+	// min = 0.25
+	// x = (missinHours / min)
+	// rest = x % issuesCount
+	// timePerIssue = x / issuesCount * min
+
+	log.Printf("Missing hours: %v Issues: %v Time per issue: %v(rounded: %v) Extra time: %v To track: %v\n",
+		missingHours,
+		issuesCount,
+		timePerIssue,
+		roundedTimePerIssue,
+		extraTime,
+		extraTime+(roundedTimePerIssue*float64(issuesCount)))
+
+	for num, issue := range issues {
+		timeToAdd := roundedTimePerIssue
+		// Add extraTime to the first ticket
+		if num == 0 {
+			timeToAdd += extraTime
+		}
+		log.Printf("Tracking %v in #%v", timeToAdd, issue.ID)
+		if !dryRun {
+			makeTimeEntry(host, apiKey, issue.ID, spentOn, timeToAdd)
+		}
+	}
 }
 
 func main() {
+	var todayDate string
+	var trackedTime = 0.0
+
 	flag.Parse()
-	today := time.Now().Format("2006-01-02")
-	log.Printf("Today is: %v\n", today)
-	entries := myTimeEntries(host, apiKey)
 
-	var trackedTime float32 = 0
+	if today == "" {
+		todayDate = time.Now().Format("2006-01-02")
+	} else {
+		if todayDateButReallyDate, err := time.Parse("2006-01-02", today); err != nil {
+			log.Fatalf("Invalid date format.")
+		} else {
+			todayDate = todayDateButReallyDate.Format("2006-01-02")
+		}
+	}
 
-	for _, timeEntry := range entries.TimeEntries {
-		//log.Printf("so: %v h: %v", timeEntry.SpentOn, timeEntry.Hours)
-		if timeEntry.SpentOn == today {
-			trackedTime += timeEntry.Hours
+	log.Printf("today is: %v\n", todayDate)
+
+	if entries, err := myTimeEntries(host, apiKey); err == nil {
+		todayEntries := 0
+		for _, timeEntry := range entries.TimeEntries {
+			if timeEntry.SpentOn == today {
+				todayEntries++
+				trackedTime += timeEntry.Hours
+			}
+		}
+		if todayEntries >= timeEntriesLimit {
+			log.Fatalf("Too many time entries. Bye!")
 		}
 	}
 
 	log.Printf("Tracked today: %v\n", trackedTime)
 
-	var workHours float32 = 8
-
 	if trackedTime < workHours {
-		var missingHours float32 = workHours - trackedTime
-		issues := myIssues(host, apiKey)
-		var issuesCount int = len(issues.Issues)
-		var timePerIssue float32 = missingHours / float32(issuesCount)
-		var roundedTimePerIssue float64 = math.Floor(float64(timePerIssue*10)) / 10
-		var extraTime float64 = float64(workHours) - (roundedTimePerIssue * float64(issuesCount))
-
-		log.Printf("Missing hours: %v Issues: %v Time per issue: %v(rounded: %v) Extra time: %v\n", missingHours, issuesCount, timePerIssue, roundedTimePerIssue, extraTime)
-		log.Printf("To track: %v", extraTime+(roundedTimePerIssue*float64(issuesCount)))
-
-		for num, issue := range issues.Issues {
-
-			timeToAdd := roundedTimePerIssue
-			// Add extraTime to the first ticket
-			if num == 0 {
-				timeToAdd += extraTime
-			}
-
-			log.Printf("Tracking %v in #%v", timeToAdd, issue.Id)
-			//makeTimeEntry(host, apiKey, issue.Id, today, timeToAdd, issue.Project.Id)
-			//return
+		if issues, err := myIssues(host, apiKey); err == nil {
+			trackTime(issues.Issues, todayDate, workHours, trackedTime)
 		}
 	}
 }
